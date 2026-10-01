@@ -1,7 +1,9 @@
 // useState stores data. useEffect runs code after the page appears (here: to fetch data).
 import { useEffect, useState } from 'react'
+// Our helper that calls GET /api/items.
 import { getItems } from '../api'
-import ItemCard from '../components/ItemCard'
+// The grid component that receives the list and draws one card per item.
+import ItemGrid from '../components/ItemGrid'
 
 export default function Browse() {
   // The list of items. It starts empty.
@@ -47,13 +49,8 @@ export default function Browse() {
   return (
     <div>
       <h1 className="mb-4 text-2xl font-bold">Browse items</h1>
-      {/* A responsive grid: 1 column on phones, 2 on small screens, 3 on large. */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {/* map turns each item into a card. "key" helps React track each one. */}
-        {items.map((item) => (
-          <ItemCard key={item._id} item={item} />
-        ))}
-      </div>
+      {/* Parent to child: Browse passes the whole list down as the "items" prop. ItemGrid draws the cards. */}
+      <ItemGrid items={items} />
     </div>
   )
 }
