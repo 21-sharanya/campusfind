@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { getItem } from '../api'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { deleteItem, getItem, updateItem } from '../api'
+import PinModal from '../components/PinModal'
 import StatusBadge from '../components/StatusBadge'
 
-// Turns "2026-09-29T00:00:00.000Z" into "29 September 2026".
 const formatDate = (value) =>
   new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
 
-// A tiny component for one "label: value" pair in the details grid.
 function Detail({ label, value }) {
   return (
     <div>
@@ -18,14 +17,14 @@ function Detail({ label, value }) {
 }
 
 export default function ItemDetail() {
-  // The id from the URL, e.g. /items/abc123 gives "abc123".
   const { id } = useParams()
-  // The item data. null until the server answers.
+  const navigate = useNavigate()
   const [item, setItem] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Which modal is open: null (none), 'returned' or 'delete'.
+  const [modal, setModal] = useState(null)
 
-  // Fetch the item whenever the id changes. [id] is the dependency list.
   useEffect(() => {
     const controller = new AbortController()
 
@@ -46,6 +45,22 @@ export default function ItemDetail() {
     return () => controller.abort()
   }, [id])
 
+  // Called by the modal with the PIN. If it throws, the modal shows the error message.
+  const handleMarkReturned = async (pin) => {
+    // PUT only the field we want to change.
+    const updated = await updateItem(id, { status: 'returned' }, pin)
+    // Replace the item in state so the badge changes right away.
+    setItem(updated)
+    // Close the modal.
+    setModal(null)
+  }
+
+  const handleDelete = async (pin) => {
+    await deleteItem(id, pin)
+    // The item is gone, so go back to the list.
+    navigate('/browse')
+  }
+
   if (loading) return <p className="text-slate-500">Loading item...</p>
 
   if (error)
@@ -58,7 +73,6 @@ export default function ItemDetail() {
       </div>
     )
 
-  // Safety net: if for any reason there's no item, draw nothing.
   if (!item) return null
 
   const isFound = item.type === 'found'
@@ -70,7 +84,6 @@ export default function ItemDetail() {
       </Link>
 
       <article className="mt-4 rounded-xl border bg-white p-6 shadow-sm">
-        {/* Top row: LOST/FOUND label and the status badge. */}
         <div className="flex items-center justify-between">
           <span
             className={`rounded px-2 py-0.5 text-xs font-bold uppercase ${
@@ -83,10 +96,8 @@ export default function ItemDetail() {
         </div>
 
         <h1 className="mt-3 text-2xl font-bold">{item.title}</h1>
-        {/* whitespace-pre-line keeps any line breaks the poster typed. */}
         <p className="mt-2 whitespace-pre-line text-slate-600">{item.description}</p>
 
-        {/* A grid of facts: 1 column on phones, 2 on wider screens. */}
         <dl className="mt-6 grid gap-4 sm:grid-cols-2">
           <Detail label="Category" value={item.category} />
           <Detail label="Location" value={item.location} />
@@ -94,7 +105,6 @@ export default function ItemDetail() {
           <Detail label="Posted by" value={item.contactName} />
         </dl>
 
-        {/* Contact info. Found items hide the phone until ownership is verified (built on Day 5). */}
         <div className="mt-6 rounded-lg bg-slate-50 p-4 text-sm">
           {isFound ? (
             <>
@@ -123,7 +133,55 @@ export default function ItemDetail() {
             </>
           )}
         </div>
+
+        {/* Manage section: every action asks for the PIN, so only the poster can use it. */}
+        <div className="mt-6 border-t pt-4">
+          <p className="mb-3 text-sm font-medium text-slate-500">Posted this? Manage it with your PIN</p>
+          <div className="flex flex-wrap gap-2">
+            {/* Hide "Mark returned" once the item is already returned. */}
+            {item.status !== 'returned' && (
+              <button
+                onClick={() => setModal('returned')}
+                className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+              >
+                Mark as returned
+              </button>
+            )}
+            {/* The edit page itself is built in Commit 6. */}
+            <Link
+              to={`/items/${id}/edit`}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+            >
+              Edit
+            </Link>
+            <button
+              onClick={() => setModal('delete')}
+              className="rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
       </article>
+
+      {/* Render a modal only when its name is stored in the "modal" state. */}
+      {modal === 'returned' && (
+        <PinModal
+          title="Mark this item as returned?"
+          confirmLabel="Mark returned"
+          onConfirm={handleMarkReturned}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal === 'delete' && (
+        <PinModal
+          title="Delete this post?"
+          confirmLabel="Delete"
+          danger
+          onConfirm={handleDelete}
+          onClose={() => setModal(null)}
+        />
+      )}
     </div>
   )
 }

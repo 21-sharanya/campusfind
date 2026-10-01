@@ -33,3 +33,15 @@ export const getItem = (id, signal) => request(`/items/${id}`, { signal })
 // Create a new item. JSON.stringify turns the JavaScript object into JSON text for the request body.
 export const createItem = (data) =>
   request('/items', { method: 'POST', body: JSON.stringify(data) })
+
+// Update an item. The PIN travels in the "x-item-pin" header, as the server expects.
+export const updateItem = (id, data, pin) =>
+  request(`/items/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+    headers: { 'x-item-pin': pin },
+  })
+
+// Delete an item (PIN required).
+export const deleteItem = (id, pin) =>
+  request(`/items/${id}`, { method: 'DELETE', headers: { 'x-item-pin': pin } })
