@@ -30,3 +30,6 @@ export const getItems = (params = {}, signal) => {
 
 // Get one item by id.
 export const getItem = (id, signal) => request(`/items/${id}`, { signal })
+// Create a new item. JSON.stringify turns the JavaScript object into JSON text for the request body.
+export const createItem = (data) =>
+  request('/items', { method: 'POST', body: JSON.stringify(data) })

@@ -1,9 +1,6 @@
-// useState lets the form remember what the user has typed.
 import { useState } from 'react'
-// The shared category and location lists (same as the server's).
 import { CATEGORIES, LOCATIONS } from '../constants'
 
-// The starting (empty) value of every field in the form.
 const emptyForm = {
   type: 'lost',
   title: '',
@@ -17,75 +14,91 @@ const emptyForm = {
   pin: '',
 }
 
-// Tailwind classes shared by all inputs, written once so every field looks the same.
 const inputClass =
   'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500'
 
-// Returns today's date as YYYY-MM-DD in the user's own time zone. Used to block future dates.
 const today = () => {
   const now = new Date()
-  // getTimezoneOffset is in minutes. Convert to milliseconds and shift so toISOString shows the local date.
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split('T')[0]
 }
 
-// A small helper component: a label wrapped around an input, plus an optional hint or error message.
-// Wrapping the input in <label> means clicking the text focuses the input.
+// Checks every field and returns an object of error messages. An empty object means "all good".
+function validate(form) {
+  const errors = {}
+  // trim() removes spaces at the ends, so "   " counts as empty.
+  if (!form.title.trim()) errors.title = 'Title is required'
+  if (!form.description.trim()) errors.description = 'Description is required'
+  if (!form.category) errors.category = 'Choose a category'
+  if (!form.location) errors.location = 'Choose a location'
+  if (!form.dateOccurred) errors.dateOccurred = 'Pick a date'
+  // Dates in YYYY-MM-DD format can be compared as plain text.
+  else if (form.dateOccurred > today()) errors.dateOccurred = 'The date cannot be in the future'
+  if (!form.contactName.trim()) errors.contactName = 'Your name is required'
+  // ^\d{10}$ means exactly ten digits.
+  if (!/^\d{10}$/.test(form.contactPhone)) errors.contactPhone = 'Enter a 10-digit phone number'
+  if (form.type === 'found' && !form.verifyQuestion.trim()) {
+    errors.verifyQuestion = 'Add a question so the real owner can prove it is theirs'
+  }
+  if (!/^\d{4}$/.test(form.pin)) errors.pin = 'PIN must be exactly 4 digits'
+  return errors
+}
+
 function Field({ label, error, hint, children }) {
   return (
     <label className="block text-sm font-medium text-slate-700">
       {label}
-      {/* children is whatever we put between <Field> and </Field>, usually an input. */}
       {children}
-      {/* Show the hint only when there is no error. */}
       {hint && !error && <span className="mt-1 block text-xs font-normal text-slate-500">{hint}</span>}
       {error && <span className="mt-1 block text-xs font-normal text-red-600">{error}</span>}
     </label>
   )
 }
 
-// Props: initialValues (starting data), onSubmit (called with the form data), submitLabel (button text),
-// lockType and pinLabel are used by the edit page later.
+// New props: submitting (true while the request is running) and serverError (a message from the server).
 export default function ReportForm({
   initialValues = {},
   onSubmit,
   submitLabel = 'Submit',
   lockType = false,
   pinLabel = 'Choose a 4-digit PIN',
+  submitting = false,
+  serverError = '',
 }) {
-  // The whole form lives in ONE state object. The function form runs only once, on the first render.
   const [form, setForm] = useState(() => {
-    // Start from the empty form...
     const start = { ...emptyForm }
-    // ...then copy over only the known fields that were passed in initialValues.
     Object.keys(emptyForm).forEach((key) => {
       if (initialValues[key] !== undefined) start[key] = initialValues[key]
     })
     return start
   })
+  // The error messages, one per field. Starts empty.
+  const [errors, setErrors] = useState({})
 
-  // One change handler for every input. It uses the input's "name" to know which field to update.
   const handleChange = (e) => {
     const { name, value } = e.target
-    // PIN and phone accept digits only, so strip every other character.
     const cleaned = name === 'pin' || name === 'contactPhone' ? value.replace(/\D/g, '') : value
-    // Copy the old form and replace just this one field. [name] is a computed key.
     setForm((prev) => ({ ...prev, [name]: cleaned }))
+    // As soon as the user edits a field, clear that field's error message.
+    setErrors((prev) => ({ ...prev, [name]: '' }))
   }
 
-  // Runs when the form is submitted (Enter key or the submit button).
   const handleSubmit = (e) => {
-    // Stop the browser's default behaviour, which would reload the page.
     e.preventDefault()
-    // Give the form data to the parent component.
+    // Check all the fields.
+    const found = validate(form)
+    // Show the errors (an empty object clears them all).
+    setErrors(found)
+    // If there is at least one error, stop here and don't send anything.
+    if (Object.keys(found).length > 0) return
+    // All valid, so hand the data to the parent.
     onSubmit(form)
   }
 
-  // True when the user is reporting a found item. Only then do we ask the verification question.
   const isFound = form.type === 'found'
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5 rounded-xl border bg-white p-6 shadow-sm">
-      {/* Lost / Found switch. When locked (edit page) just show the type as text. */}
+    // noValidate turns off the browser's own popups so our messages show instead.
+    <form onSubmit={handleSubmit} noValidate className="space-y-5 rounded-xl border bg-white p-6 shadow-sm">
       {lockType ? (
         <p className="text-sm text-slate-600">
           Type: <span className="font-semibold uppercase">{form.type}</span> (cannot be changed)
@@ -93,7 +106,6 @@ export default function ReportForm({
       ) : (
         <div className="flex gap-2">
           {['lost', 'found'].map((t) => (
-            // type="button" stops these from submitting the form.
             <button
               key={t}
               type="button"
@@ -110,8 +122,7 @@ export default function ReportForm({
         </div>
       )}
 
-      <Field label="Title">
-        {/* value + onChange = a "controlled input": React state is the single source of truth. */}
+      <Field label="Title" error={errors.title}>
         <input
           name="title"
           value={form.title}
@@ -122,7 +133,7 @@ export default function ReportForm({
         />
       </Field>
 
-      <Field label="Description">
+      <Field label="Description" error={errors.description}>
         <textarea
           name="description"
           value={form.description}
@@ -134,9 +145,8 @@ export default function ReportForm({
         />
       </Field>
 
-      {/* Two columns on screens wider than the "sm" breakpoint, one column on phones. */}
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="Category">
+        <Field label="Category" error={errors.category}>
           <select name="category" value={form.category} onChange={handleChange} className={inputClass}>
             <option value="">Select...</option>
             {CATEGORIES.map((c) => (
@@ -147,7 +157,7 @@ export default function ReportForm({
           </select>
         </Field>
 
-        <Field label="Location">
+        <Field label="Location" error={errors.location}>
           <select name="location" value={form.location} onChange={handleChange} className={inputClass}>
             <option value="">Select...</option>
             {LOCATIONS.map((l) => (
@@ -159,8 +169,7 @@ export default function ReportForm({
         </Field>
       </div>
 
-      <Field label={isFound ? 'Date found' : 'Date lost'}>
-        {/* max stops the user choosing a date in the future. */}
+      <Field label={isFound ? 'Date found' : 'Date lost'} error={errors.dateOccurred}>
         <input
           type="date"
           name="dateOccurred"
@@ -172,7 +181,7 @@ export default function ReportForm({
       </Field>
 
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="Your name">
+        <Field label="Your name" error={errors.contactName}>
           <input
             name="contactName"
             value={form.contactName}
@@ -182,7 +191,7 @@ export default function ReportForm({
           />
         </Field>
 
-        <Field label="Phone number">
+        <Field label="Phone number" error={errors.contactPhone}>
           <input
             name="contactPhone"
             value={form.contactPhone}
@@ -195,10 +204,10 @@ export default function ReportForm({
         </Field>
       </div>
 
-      {/* Only shown for found items. The finder sets a question that only the real owner can answer. */}
       {isFound && (
         <Field
           label="Verification question"
+          error={errors.verifyQuestion}
           hint="Something only the owner would know, e.g. “What is the wallpaper on the phone?”"
         >
           <input
@@ -211,7 +220,11 @@ export default function ReportForm({
         </Field>
       )}
 
-      <Field label={pinLabel} hint="You will need this PIN to edit, delete or close your post. Remember it!">
+      <Field
+        label={pinLabel}
+        error={errors.pin}
+        hint="You will need this PIN to edit, delete or close your post. Remember it!"
+      >
         <input
           name="pin"
           value={form.pin}
@@ -223,11 +236,16 @@ export default function ReportForm({
         />
       </Field>
 
+      {/* An error that came back from the server (for example "Incorrect PIN"). */}
+      {serverError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{serverError}</p>}
+
+      {/* disabled while the request is running, so the user can't click twice. */}
       <button
         type="submit"
-        className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 font-semibold text-white hover:bg-indigo-700"
+        disabled={submitting}
+        className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {submitLabel}
+        {submitting ? 'Saving...' : submitLabel}
       </button>
     </form>
   )
