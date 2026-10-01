@@ -1,3 +1,4 @@
+import itemRoutes from './routes/itemRoutes.js'
 // Express is the web framework that handles requests and responses.
 import express from 'express'
 // cors allows our React app (a different port) to call this API.
