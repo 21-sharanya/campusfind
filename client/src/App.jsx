@@ -5,7 +5,7 @@ import Home from './pages/Home'
 import Browse from './pages/Browse'
 import ItemDetail from './pages/ItemDetail'
 import Report from './pages/Report'
-import NotFound from './pages/Notfound'
+import NotFound from './pages/NotFound'
 
 export default function App() {
   return (
