@@ -1,4 +1,3 @@
-import itemRoutes from './routes/itemRoutes.js'
 // Express is the web framework that handles requests and responses.
 import express from 'express'
 // cors allows our React app (a different port) to call this API.
@@ -7,6 +6,10 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 // Our database connection function from db.js.
 import connectDB from './config/db.js'
+// The router that holds all the /api/items URLs.
+import itemRoutes from './routes/itemRoutes.js'
+// Our two error helpers: notFound for unknown URLs, errorHandler for thrown errors.
+import { notFound, errorHandler } from './middleware/errorHandler.js'
 
 // Load the .env values now, so process.env.PORT and process.env.MONGO_URI exist.
 dotenv.config()
@@ -24,6 +27,14 @@ app.get('/api/health', (req, res) => {
   // Send back JSON with a status and the current time.
   res.json({ status: 'ok', time: new Date().toISOString() })
 })
+
+// Connect the item routes: every URL starting with /api/items is handled by itemRoutes.
+app.use('/api/items', itemRoutes)
+
+// MUST come after all real routes: catches any URL that matched nothing above.
+app.use(notFound)
+// MUST come last: catches every error passed on with next(err).
+app.use(errorHandler)
 
 // Use the PORT from .env, or 5000 if it's missing.
 const PORT = process.env.PORT || 5000
