@@ -1,3 +1,7 @@
+// Node's built-in DNS module.
+import dns from 'node:dns'
+// Use Google and Cloudflare DNS instead of the network's own, which may not handle SRV lookups.
+dns.setServers(['8.8.8.8', '1.1.1.1'])
 // Mongoose is the library that lets our Node code talk to MongoDB.
 import mongoose from 'mongoose'
 
