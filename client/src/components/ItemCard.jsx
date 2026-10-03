@@ -32,7 +32,7 @@ export default function ItemCard({ item }) {
       </div>
 
       {/* Title and a description limited to 2 lines (line-clamp-2). */}
-      <h3 className="text-lg font-semibold">{item.title}</h3>
+            <h3 className="break-words text-lg font-semibold">{item.title}</h3>
       <p className="mt-1 line-clamp-2 text-sm text-slate-600">{item.description}</p>
 
       {/* Small details row. flex-wrap lets it wrap on narrow screens. */}
