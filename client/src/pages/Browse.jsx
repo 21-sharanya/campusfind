@@ -6,29 +6,38 @@ import FilterBar from '../components/FilterBar'
 import ItemGrid from '../components/ItemGrid'
 import Spinner from '../components/Spinner'
 
-// The "no filter" state. Every value is an empty string.
 const defaultFilters = { q: '', type: '', category: '', location: '', status: '' }
 
 export default function Browse() {
-  // Browse OWNS the filter values (the parent). FilterBar only displays and changes them via props.
   const [filters, setFilters] = useState(defaultFilters)
+  // NEW: the search text AFTER the user pauses typing. Only this value triggers a request.
+  const [debouncedQ, setDebouncedQ] = useState('')
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  // Pull each filter into its own variable. We list them separately in the effect's dependency list below.
   const { q, type, category, location, status } = filters
 
-  // Called by FilterBar with the name of the filter and its new value.
   const handleChange = (name, value) => {
-    // Copy the old filters and replace just one value.
     setFilters((prev) => ({ ...prev, [name]: value }))
   }
 
-  // Reset every filter.
-  const handleClear = () => setFilters(defaultFilters)
+  const handleClear = () => {
+    setFilters(defaultFilters)
+    // Also reset the debounced text right away, so we don't wait 400 ms after clearing.
+    setDebouncedQ('')
+  }
 
-  // Re-fetch whenever ANY filter changes, because they are all in the dependency list.
+  // EFFECT 1 (debounce): copy q into debouncedQ, but only after 400 ms with no typing.
+  useEffect(() => {
+    // Start a timer each time q changes.
+    const timer = setTimeout(() => setDebouncedQ(q), 400)
+    // Cleanup runs BEFORE the next effect, and when the component closes.
+    // If the user types again within 400 ms, this cancels the old timer, so only the last one fires.
+    return () => clearTimeout(timer)
+  }, [q])
+
+  // EFFECT 2 (fetch): runs when the debounced text or any dropdown/chip filter changes.
   useEffect(() => {
     const controller = new AbortController()
 
@@ -36,8 +45,8 @@ export default function Browse() {
       setLoading(true)
       setError('')
       try {
-        // getItems turns this object into ?q=...&type=... and skips empty values.
-        const data = await getItems({ q, type, category, location, status }, controller.signal)
+        // Note: debouncedQ here, NOT q.
+        const data = await getItems({ q: debouncedQ, type, category, location, status }, controller.signal)
         setItems(data)
       } catch (err) {
         if (err.name !== 'AbortError') setError(err.message)
@@ -47,11 +56,9 @@ export default function Browse() {
     }
     load()
 
-    // If a filter changes again before this request finishes, cancel the old one.
     return () => controller.abort()
-  }, [q, type, category, location, status])
+  }, [debouncedQ, type, category, location, status])
 
-  // True if the user has applied any filter. Used to choose the right "empty" message.
   const hasFilters = Object.values(filters).some(Boolean)
 
   return (
@@ -60,12 +67,10 @@ export default function Browse() {
 
       <FilterBar filters={filters} onChange={handleChange} onClear={handleClear} />
 
-      {/* A live result count. */}
       <p className="text-sm text-slate-500">
         {loading ? 'Searching...' : `${items.length} result${items.length === 1 ? '' : 's'}`}
       </p>
 
-      {/* Only one of these four lines shows at a time. */}
       {loading && <Spinner />}
       {!loading && error && <ErrorMessage message={error} />}
       {!loading && !error && items.length === 0 && (
