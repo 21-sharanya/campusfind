@@ -65,5 +65,4 @@ client/src/  components/  pages/  api.js  constants.js  App.jsx  main.jsx
 
 ## Tutorial reference
 
-Built by following: https://www.freecodecamp.org/news/mern-stack-crash-course/ 
-https://www.youtube.com/watch?v=DJ5iIo4AWDg 
+Built by following: https://www.youtube.com/watch?v=-42K44A1oMA
