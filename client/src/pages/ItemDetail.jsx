@@ -6,6 +6,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { deleteItem, getItem, updateItem } from '../api'
 import PinModal from '../components/PinModal'
 import StatusBadge from '../components/StatusBadge'
+import ClaimForm from '../components/ClaimForm'
 
 const formatDate = (value) =>
   new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -63,6 +64,14 @@ export default function ItemDetail() {
     // The item is gone, so go back to the list.
     navigate('/browse')
   }
+    // Called by ClaimForm after a claim is saved. Update the counter and status on screen without reloading.
+  const handleClaimed = () => {
+    setItem((prev) => ({
+      ...prev,
+      claimsCount: prev.claimsCount + 1,
+      status: prev.status === 'open' ? 'claimed' : prev.status,
+    }))
+  }
 
   if (loading) return <p className="text-slate-500">Loading item...</p>
 
@@ -116,12 +125,10 @@ export default function ItemDetail() {
                 Ownership is checked with a question. The finder's contact details are shared after your answer is
                 verified.
               </p>
-              {item.verifyQuestion && (
-                <p className="mt-2">
-                  <span className="font-medium">Verification question:</span> {item.verifyQuestion}
-                </p>
-              )}
+              
               <p className="mt-2 text-slate-500">Claims so far: {item.claimsCount}</p>
+                            {/* key={item._id} resets the form when you open a different item. */}
+              {item.status !== 'returned' && <ClaimForm key={item._id} item={item} onClaimed={handleClaimed} />}
             </>
           ) : (
             <>

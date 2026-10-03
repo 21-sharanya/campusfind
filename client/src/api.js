@@ -48,3 +48,9 @@ export const deleteItem = (id, pin) =>
 
 // Get the possible matches for one item.
 export const getMatches = (id, signal) => request(`/items/${id}/matches`, { signal })
+// Send a claim for a found item. Anyone can do this, so no PIN is needed.
+export const addClaim = (id, data) =>
+  request(`/items/${id}/claims`, { method: 'POST', body: JSON.stringify(data) })
+
+// Read the claims on an item. Only the poster can, so the PIN goes in the header.
+export const getClaims = (id, pin) => request(`/items/${id}/claims`, { headers: { 'x-item-pin': pin } })
