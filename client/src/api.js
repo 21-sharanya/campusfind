@@ -45,3 +45,6 @@ export const updateItem = (id, data, pin) =>
 // Delete an item (PIN required).
 export const deleteItem = (id, pin) =>
   request(`/items/${id}`, { method: 'DELETE', headers: { 'x-item-pin': pin } })
+
+// Get the possible matches for one item.
+export const getMatches = (id, signal) => request(`/items/${id}/matches`, { signal })

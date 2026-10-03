@@ -1,3 +1,4 @@
+import MatchPanel from '../components/MatchPanel'
 import Spinner from '../components/Spinner'
 import ErrorMessage from '../components/ErrorMessage'
 import { useEffect, useState } from 'react'
@@ -165,6 +166,8 @@ export default function ItemDetail() {
           </div>
         </div>
       </article>
+            {/* key={item._id} rebuilds the panel when you move to a different item, so old matches never linger. */}
+      {item.status !== 'returned' && <MatchPanel key={item._id} itemId={item._id} itemType={item.type} />}
 
       {/* Render a modal only when its name is stored in the "modal" state. */}
       {modal === 'returned' && (
