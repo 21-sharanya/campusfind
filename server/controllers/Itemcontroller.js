@@ -55,6 +55,14 @@ const EDITABLE_FIELDS = [
   'status',
 ]
 
+// Only accept plain text from the URL. Without this check, a request like ?category[$ne]=x
+// would arrive as an object and could change what the database query means ("NoSQL injection").
+const asText = (value) => (typeof value === 'string' ? value.trim() : '')
+
+// Escape characters that have a special meaning in regular expressions (. * + ? ^ $ { } ( ) | [ ] \)
+// so a search for "c++" or "(black)" is treated as plain text instead of crashing.
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
 // POST /api/items: create a new item. next passes errors to the error handler.
 export const createItem = async (req, res, next) => {
   // try/catch so any error goes to our error handler instead of crashing.
@@ -110,12 +118,33 @@ export const createItem = async (req, res, next) => {
   }
 }
 
-// GET /api/items: return all items.
+// GET /api/items: return items, optionally filtered, e.g. /api/items?type=found&q=calculator
 export const getItems = async (req, res, next) => {
   try {
-    // Find every item and sort by createdAt, -1 meaning newest first.
+    // Read each filter from the URL and make sure it is plain text.
+    const type = asText(req.query.type)
+    const category = asText(req.query.category)
+    const location = asText(req.query.location)
+    const status = asText(req.query.status)
+    const q = asText(req.query.q)
+
+    // Build the MongoDB query. An empty object {} means "match everything".
+    const query = {}
+    // Add each condition only when that filter was given (and is valid).
+    if (type === 'lost' || type === 'found') query.type = type
+    if (category) query.category = category
+    if (location) query.location = location
+    if (['open', 'claimed', 'returned'].includes(status)) query.status = status
+    if (q) {
+      // Build a pattern from the search text. "i" makes it case-insensitive.
+      const regex = new RegExp(escapeRegex(q), 'i')
+      // $or means: the title matches OR the description matches.
+      query.$or = [{ title: regex }, { description: regex }]
+    }
+
+    // Find the items that match every condition, newest first.
     // pin and claims are left out automatically because of select:false.
-    const items = await Item.find().sort({ createdAt: -1 })
+    const items = await Item.find(query).sort({ createdAt: -1 })
     // Send the list as JSON (status 200 by default).
     res.json(items)
   } catch (err) {
