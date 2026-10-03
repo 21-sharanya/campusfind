@@ -1,12 +1,13 @@
-import MatchPanel from '../components/MatchPanel'
-import Spinner from '../components/Spinner'
-import ErrorMessage from '../components/ErrorMessage'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { deleteItem, getItem, updateItem } from '../api'
-import PinModal from '../components/PinModal'
-import StatusBadge from '../components/StatusBadge'
+import { deleteItem, getClaims, getItem, updateItem } from '../api'
 import ClaimForm from '../components/ClaimForm'
+import ClaimsList from '../components/ClaimsList'
+import ErrorMessage from '../components/ErrorMessage'
+import MatchPanel from '../components/MatchPanel'
+import PinModal from '../components/PinModal'
+import Spinner from '../components/Spinner'
+import StatusBadge from '../components/StatusBadge'
 
 const formatDate = (value) =>
   new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -15,7 +16,7 @@ function Detail({ label, value }) {
   return (
     <div>
       <dt className="text-xs font-semibold uppercase text-slate-500">{label}</dt>
-      <dd className="mt-0.5 font-medium">{value}</dd>
+      <dd className="mt-0.5 break-words font-medium">{value}</dd>
     </div>
   )
 }
@@ -26,8 +27,10 @@ export default function ItemDetail() {
   const [item, setItem] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  // Which modal is open: null (none), 'returned' or 'delete'.
+  // Which pop-up is open: null, 'returned', 'delete', 'claims' (asking for the PIN) or 'claimsList' (showing the claims).
   const [modal, setModal] = useState(null)
+  // The claims we fetched, plus the PIN that unlocked them (so "Mark as returned" doesn't ask again).
+  const [claimData, setClaimData] = useState(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -49,22 +52,18 @@ export default function ItemDetail() {
     return () => controller.abort()
   }, [id])
 
-  // Called by the modal with the PIN. If it throws, the modal shows the error message.
   const handleMarkReturned = async (pin) => {
-    // PUT only the field we want to change.
     const updated = await updateItem(id, { status: 'returned' }, pin)
-    // Replace the item in state so the badge changes right away.
     setItem(updated)
-    // Close the modal.
     setModal(null)
   }
 
   const handleDelete = async (pin) => {
     await deleteItem(id, pin)
-    // The item is gone, so go back to the list.
     navigate('/browse')
   }
-    // Called by ClaimForm after a claim is saved. Update the counter and status on screen without reloading.
+
+  // Called by ClaimForm after a claim is saved. Update the counter and status on screen without reloading.
   const handleClaimed = () => {
     setItem((prev) => ({
       ...prev,
@@ -73,13 +72,34 @@ export default function ItemDetail() {
     }))
   }
 
-  if (loading) return <p className="text-slate-500">Loading item...</p>
+  // Called by the PIN pop-up. If the PIN is wrong, getClaims throws and the pop-up shows the message.
+  const handleViewClaims = async (pin) => {
+    const list = await getClaims(id, pin)
+    // Keep both the list and the PIN, then switch to the claims pop-up.
+    setClaimData({ list, pin })
+    setModal('claimsList')
+  }
+
+  // Close the claims pop-up and forget the PIN.
+  const closeClaims = () => {
+    setModal(null)
+    setClaimData(null)
+  }
+
+  // "Mark as returned" from inside the claims pop-up, reusing the PIN we already have.
+  const handleReturnFromClaims = async () => {
+    const updated = await updateItem(id, { status: 'returned' }, claimData.pin)
+    setItem(updated)
+    closeClaims()
+  }
+
+  if (loading) return <Spinner label="Loading item..." />
 
   if (error)
     return (
-      <div>
-        <p className="text-red-600">Error: {error}</p>
-        <Link to="/browse" className="mt-3 inline-block text-sm font-medium text-indigo-600 hover:underline">
+      <div className="mx-auto max-w-2xl space-y-3">
+        <ErrorMessage message={error} />
+        <Link to="/browse" className="inline-block text-sm font-medium text-indigo-600 hover:underline">
           ← Back to browse
         </Link>
       </div>
@@ -107,8 +127,9 @@ export default function ItemDetail() {
           <StatusBadge status={item.status} />
         </div>
 
-        <h1 className="mt-3 text-2xl font-bold">{item.title}</h1>
-        <p className="mt-2 whitespace-pre-line text-slate-600">{item.description}</p>
+        {/* break-words stops very long words from pushing the page wider than a phone screen. */}
+        <h1 className="mt-3 break-words text-2xl font-bold">{item.title}</h1>
+        <p className="mt-2 whitespace-pre-line break-words text-slate-600">{item.description}</p>
 
         <dl className="mt-6 grid gap-4 sm:grid-cols-2">
           <Detail label="Category" value={item.category} />
@@ -125,9 +146,8 @@ export default function ItemDetail() {
                 Ownership is checked with a question. The finder's contact details are shared after your answer is
                 verified.
               </p>
-              
               <p className="mt-2 text-slate-500">Claims so far: {item.claimsCount}</p>
-                            {/* key={item._id} resets the form when you open a different item. */}
+              {/* key={item._id} resets the form when you open a different item. */}
               {item.status !== 'returned' && <ClaimForm key={item._id} item={item} onClaimed={handleClaimed} />}
             </>
           ) : (
@@ -144,11 +164,9 @@ export default function ItemDetail() {
           )}
         </div>
 
-        {/* Manage section: every action asks for the PIN, so only the poster can use it. */}
         <div className="mt-6 border-t pt-4">
           <p className="mb-3 text-sm font-medium text-slate-500">Posted this? Manage it with your PIN</p>
           <div className="flex flex-wrap gap-2">
-            {/* Hide "Mark returned" once the item is already returned. */}
             {item.status !== 'returned' && (
               <button
                 onClick={() => setModal('returned')}
@@ -157,7 +175,15 @@ export default function ItemDetail() {
                 Mark as returned
               </button>
             )}
-            {/* The edit page itself is built in Commit 6. */}
+            {/* Only found items receive claims, so only they get this button. */}
+            {isFound && (
+              <button
+                onClick={() => setModal('claims')}
+                className="rounded-lg border border-indigo-300 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+              >
+                View claims ({item.claimsCount})
+              </button>
+            )}
             <Link
               to={`/items/${id}/edit`}
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
@@ -173,10 +199,10 @@ export default function ItemDetail() {
           </div>
         </div>
       </article>
-            {/* key={item._id} rebuilds the panel when you move to a different item, so old matches never linger. */}
+
+      {/* Smart Match panel from Day 4. */}
       {item.status !== 'returned' && <MatchPanel key={item._id} itemId={item._id} itemType={item.type} />}
 
-      {/* Render a modal only when its name is stored in the "modal" state. */}
       {modal === 'returned' && (
         <PinModal
           title="Mark this item as returned?"
@@ -192,6 +218,25 @@ export default function ItemDetail() {
           danger
           onConfirm={handleDelete}
           onClose={() => setModal(null)}
+        />
+      )}
+      {/* Step 1: ask for the PIN. */}
+      {modal === 'claims' && (
+        <PinModal
+          title="View claims on this item"
+          confirmLabel="View claims"
+          onConfirm={handleViewClaims}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {/* Step 2: once the PIN was accepted, show the claims. */}
+      {modal === 'claimsList' && claimData && (
+        <ClaimsList
+          question={item.verifyQuestion}
+          claims={claimData.list}
+          canReturn={item.status !== 'returned'}
+          onMarkReturned={handleReturnFromClaims}
+          onClose={closeClaims}
         />
       )}
     </div>
