@@ -1,59 +1,82 @@
-import Spinner from '../components/Spinner'
-import ErrorMessage from '../components/ErrorMessage'
-import EmptyState from '../components/EmptyState'
-// useState stores data. useEffect runs code after the page appears (here: to fetch data).
 import { useEffect, useState } from 'react'
-// Our helper that calls GET /api/items.
 import { getItems } from '../api'
-// The grid component that receives the list and draws one card per item.
+import EmptyState from '../components/EmptyState'
+import ErrorMessage from '../components/ErrorMessage'
+import FilterBar from '../components/FilterBar'
 import ItemGrid from '../components/ItemGrid'
+import Spinner from '../components/Spinner'
+
+// The "no filter" state. Every value is an empty string.
+const defaultFilters = { q: '', type: '', category: '', location: '', status: '' }
 
 export default function Browse() {
-  // The list of items. It starts empty.
+  // Browse OWNS the filter values (the parent). FilterBar only displays and changes them via props.
+  const [filters, setFilters] = useState(defaultFilters)
   const [items, setItems] = useState([])
-  // True while we wait for the server.
   const [loading, setLoading] = useState(true)
-  // Holds an error message if the request fails.
   const [error, setError] = useState('')
 
-  // The effect runs once, after the first render, because the dependency list [] is empty.
+  // Pull each filter into its own variable. We list them separately in the effect's dependency list below.
+  const { q, type, category, location, status } = filters
+
+  // Called by FilterBar with the name of the filter and its new value.
+  const handleChange = (name, value) => {
+    // Copy the old filters and replace just one value.
+    setFilters((prev) => ({ ...prev, [name]: value }))
+  }
+
+  // Reset every filter.
+  const handleClear = () => setFilters(defaultFilters)
+
+  // Re-fetch whenever ANY filter changes, because they are all in the dependency list.
   useEffect(() => {
-    // AbortController lets us cancel the request if the page closes before it finishes.
     const controller = new AbortController()
 
-    // Effects can't be async themselves, so we define an async function inside and call it.
     async function load() {
+      setLoading(true)
+      setError('')
       try {
-        // Ask the API for items. controller.signal connects this request to the controller.
-        const data = await getItems({}, controller.signal)
-        // Store the items. React re-renders the page with them.
+        // getItems turns this object into ?q=...&type=... and skips empty values.
+        const data = await getItems({ q, type, category, location, status }, controller.signal)
         setItems(data)
       } catch (err) {
-        // An abort is expected when leaving the page, so don't treat it as an error.
         if (err.name !== 'AbortError') setError(err.message)
       } finally {
-        // Stop the loading state, unless the request was cancelled.
         if (!controller.signal.aborted) setLoading(false)
       }
     }
     load()
 
-    // The cleanup function runs when the component is removed. It cancels any request still running.
+    // If a filter changes again before this request finishes, cancel the old one.
     return () => controller.abort()
-  }, [])
+  }, [q, type, category, location, status])
 
-  // While loading, show a message and stop here.
-  if (loading) return <p className="text-slate-500">Loading items...</p>
-  // If something failed, show the error.
-  if (error) return <p className="text-red-600">Error: {error}</p>
-  // If the list is empty, say so.
-  if (items.length === 0) return <p className="text-slate-500">No items posted yet.</p>
+  // True if the user has applied any filter. Used to choose the right "empty" message.
+  const hasFilters = Object.values(filters).some(Boolean)
 
   return (
-    <div>
-      <h1 className="mb-4 text-2xl font-bold">Browse items</h1>
-      {/* Parent to child: Browse passes the whole list down as the "items" prop. ItemGrid draws the cards. */}
-      <ItemGrid items={items} />
+    <div className="space-y-4">
+      <h1 className="text-2xl font-bold">Browse items</h1>
+
+      <FilterBar filters={filters} onChange={handleChange} onClear={handleClear} />
+
+      {/* A live result count. */}
+      <p className="text-sm text-slate-500">
+        {loading ? 'Searching...' : `${items.length} result${items.length === 1 ? '' : 's'}`}
+      </p>
+
+      {/* Only one of these four lines shows at a time. */}
+      {loading && <Spinner />}
+      {!loading && error && <ErrorMessage message={error} />}
+      {!loading && !error && items.length === 0 && (
+        <EmptyState
+          title={hasFilters ? 'No items match your filters' : 'No items posted yet'}
+          text={hasFilters ? 'Try different words or clear some filters.' : 'Be the first to report an item.'}
+          actionTo={hasFilters ? undefined : '/report'}
+          actionLabel="Report an item"
+        />
+      )}
+      {!loading && !error && items.length > 0 && <ItemGrid items={items} />}
     </div>
   )
 }
