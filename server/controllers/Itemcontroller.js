@@ -1,3 +1,5 @@
+// The scoring function from Commit 4.
+import { scoreMatch } from '../utils/matchScore.js'
 // bcryptjs turns a PIN into a one-way "hash" so the real PIN is never stored.
 import bcrypt from 'bcryptjs'
 // mongoose is needed here to check that an id looks valid.
@@ -207,6 +209,50 @@ export const deleteItem = async (req, res, next) => {
     await item.deleteOne()
     // Confirm with a message.
     res.json({ message: 'Item deleted' })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// A pair of items must score at least this much to count as a possible match.
+const MIN_SCORE = 4
+
+// GET /api/items/:id/matches: suggest items that might be the other half of this one.
+export const getMatches = async (req, res, next) => {
+  try {
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({ message: 'Invalid item id' })
+    }
+
+    const item = await Item.findById(req.params.id)
+    if (!item) {
+      return res.status(404).json({ message: 'Item not found' })
+    }
+
+    // A returned item is finished, so there is nothing to match.
+    if (item.status === 'returned') {
+      return res.json([])
+    }
+
+    // A lost item can only match found items, and the other way round.
+    const oppositeType = item.type === 'lost' ? 'found' : 'lost'
+    // Only compare with items that are still open.
+    const candidates = await Item.find({ type: oppositeType, status: 'open' })
+
+    const matches = candidates
+      // Score each candidate and remember why.
+      .map((candidate) => {
+        const { score, reasons } = scoreMatch(item, candidate)
+        return { item: candidate, score, reasons }
+      })
+      // Drop weak matches.
+      .filter((match) => match.score >= MIN_SCORE)
+      // Highest score first.
+      .sort((a, b) => b.score - a.score)
+      // Keep only the top 3.
+      .slice(0, 3)
+
+    res.json(matches)
   } catch (err) {
     next(err)
   }
